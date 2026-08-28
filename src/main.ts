@@ -17,12 +17,14 @@ let reviewRevealed = false;
 let clozeResult: 'correct' | 'incorrect' | '' = '';
 let addRecording: Blob | undefined;
 let addRecordingMime = '';
+let recordingRemoved = false;
 let recorder: MediaRecorder | undefined;
 let recordingStartedAt = 0;
 let recordingTimer = 0;
 let installPrompt: BeforeInstallPromptEvent | undefined;
 let transientMessage = '';
 let objectUrls: string[] = [];
+let storageAvailable = true;
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -58,6 +60,10 @@ function audioUrl(blob?: Blob): string {
   const url = URL.createObjectURL(blob);
   objectUrls.push(url);
   return url;
+}
+
+function playBlob(blob: Blob): void {
+  void new Audio(audioUrl(blob)).play().catch(() => announce('This recording could not be played by the browser. Export a backup before replacing it.'));
 }
 
 function routeFromHash(): { view: View; editId?: string } {
@@ -190,7 +196,7 @@ function renderPractice(card: RecallCard, position: number, total: number): void
     </section>`);
   if (card.audio) {
     document.querySelector('[data-play-card]')?.addEventListener('click', () => {
-      void new Audio(audioUrl(card.audio)).play();
+      if (card.audio) playBlob(card.audio);
     });
   }
   queueMicrotask(() => document.querySelector<HTMLInputElement>('#cloze-answer')?.focus());
@@ -203,7 +209,7 @@ function getEditCard(): RecallCard | undefined {
 
 function renderAdd(): void {
   const editing = getEditCard();
-  if (editing?.audio && !addRecording) {
+  if (editing?.audio && !addRecording && !recordingRemoved) {
     addRecording = editing.audio;
     addRecordingMime = editing.audioMime ?? editing.audio.type;
   }
@@ -212,7 +218,7 @@ function renderAdd(): void {
   const atRecordingLimit = !editing?.audio && !isUnlocked() && recordings >= FREE_RECORDING_LIMIT;
   shell(`
     <section class="page-heading compact"><div><p class="eyebrow">Field note ${String(cards.length + (editing ? 0 : 1)).padStart(2, '0')}</p><h2>${editing ? 'Edit this context' : 'Capture a living word'}</h2></div><p>Use a sentence you actually met or wanted to say.</p></section>
-    ${atCardLimit ? `<section class="limit-note"><h3>Your free field book is full.</h3><p>You can keep practicing and exporting all ${FREE_CARD_LIMIT} contexts, or unlock unlimited contexts with one purchase.</p><a class="button primary" href="#ownership">See the one-time unlock</a></section>` : `
+    ${!storageAvailable ? `<section class="limit-note"><h3>Local storage is unavailable.</h3><p>Check private-browsing or site-storage settings, then reload before adding a context. This prevents a note from appearing saved when it is not.</p></section>` : atCardLimit ? `<section class="limit-note"><h3>Your free field book is full.</h3><p>You can keep practicing and exporting all ${FREE_CARD_LIMIT} contexts, or unlock unlimited contexts with one purchase.</p><a class="button primary" href="#ownership">See the one-time unlock</a></section>` : `
     <form class="context-form" data-card-form novalidate>
       <input type="hidden" name="id" value="${editing ? esc(editing.id) : ''}">
       <div class="form-grid">
@@ -320,6 +326,7 @@ async function startRecording(button: HTMLButtonElement, destination: 'card' | '
       if (destination === 'card') {
         addRecording = blob;
         addRecordingMime = blob.type;
+        recordingRemoved = false;
         renderAdd();
       } else {
         const result = document.querySelector<HTMLElement>('[data-attempt-result]');
@@ -381,15 +388,26 @@ async function handleCardSubmit(form: HTMLFormElement): Promise<void> {
     audio: addRecording,
     audioMime: addRecordingMime || undefined,
   };
-  await saveCard(card);
+  try {
+    await saveCard(card);
+  } catch {
+    if (error) error.textContent = 'This context could not be saved. Check available browser storage and try again.';
+    return;
+  }
   cards = await getCards();
   addRecording = undefined;
+  recordingRemoved = false;
   location.hash = 'today';
   announce(existing ? 'Changes saved on this device.' : 'Context saved. It is ready for its first recall.');
 }
 
 async function grade(card: RecallCard, gradeValue: ReviewGrade): Promise<void> {
-  await saveCard(scheduleReview(card, gradeValue));
+  try {
+    await saveCard(scheduleReview(card, gradeValue));
+  } catch {
+    announce('That review could not be saved. Check available browser storage, then try again.');
+    return;
+  }
   cards = await getCards();
   const nextDue = cards.find((item) => item.dueAt <= Date.now() && item.id !== card.id);
   reviewRevealed = false;
@@ -417,13 +435,14 @@ document.addEventListener('click', async (event) => {
     else await startRecording(recordButton, recordButton.hasAttribute('data-record') ? 'card' : 'attempt');
     return;
   }
-  if (target.closest('[data-preview-recording]') && addRecording) { await new Audio(audioUrl(addRecording)).play(); return; }
-  if (target.closest('[data-remove-recording]')) { addRecording = undefined; addRecordingMime = ''; renderAdd(); return; }
+  if (target.closest('[data-preview-recording]') && addRecording) { playBlob(addRecording); return; }
+  if (target.closest('[data-remove-recording]')) { addRecording = undefined; addRecordingMime = ''; recordingRemoved = true; renderAdd(); return; }
   const remove = target.closest<HTMLElement>('[data-delete]');
   if (remove) {
     const card = cards.find((item) => item.id === remove.dataset.delete);
     if (card && window.confirm(`Delete “${card.word}” and its review history${card.audio ? ' and recording' : ''}? This cannot be undone.`)) {
-      await deleteCard(card.id); cards = await getCards(); announce('Context deleted.');
+      try { await deleteCard(card.id); cards = await getCards(); announce('Context deleted.'); }
+      catch { announce('That context could not be deleted. Check browser storage and try again.'); }
     }
     return;
   }
@@ -486,6 +505,7 @@ window.addEventListener('hashchange', () => {
     const editing = cards.find((card) => card.id === nextRoute.editId);
     addRecording = editing?.audio;
     addRecordingMime = editing?.audioMime ?? editing?.audio?.type ?? '';
+    recordingRemoved = false;
   }
   activeReviewId = '';
   reviewRevealed = false;
@@ -500,6 +520,7 @@ document.addEventListener('keydown', (event) => {
 
 async function registerServiceWorker(): Promise<void> {
   if (!('serviceWorker' in navigator)) return;
+  const hadController = Boolean(navigator.serviceWorker.controller);
   const registration = await navigator.serviceWorker.register('/sw.js');
   registration.addEventListener('updatefound', () => {
     const worker = registration.installing;
@@ -515,15 +536,17 @@ async function registerServiceWorker(): Promise<void> {
     });
   });
   let reloading = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloading) { reloading = true; location.reload(); } });
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController && !reloading) { reloading = true; location.reload(); }
+  });
 }
 
 async function init(): Promise<void> {
   captureLicenseFromUrl();
   try { cards = await getCards(); }
-  catch { transientMessage = 'Local storage is unavailable. Check private browsing settings before adding a context.'; }
+  catch { storageAvailable = false; transientMessage = 'Local storage is unavailable. Check private browsing settings before adding a context.'; }
   render();
-  void registerServiceWorker();
+  if (import.meta.env.PROD) void registerServiceWorker().catch(() => undefined);
   const before = isUnlocked();
   const verdict = await verifyLicense();
   if (before && verdict?.valid === false) announce('This license is no longer active. Your saved contexts remain available.');

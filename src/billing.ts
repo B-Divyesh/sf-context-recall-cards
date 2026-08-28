@@ -62,6 +62,6 @@ export async function verifyLicense(force = false): Promise<Verdict | undefined>
     localStorage.setItem(VERDICT_KEY, JSON.stringify(verdict));
     return verdict;
   } catch {
-    return cached;
+    return force ? undefined : cached;
   }
 }

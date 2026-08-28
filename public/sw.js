@@ -6,6 +6,8 @@ const APP_SHELL = [
   '/index.html',
   '/offline.html',
   '/manifest.webmanifest',
+  '/assets/app-1.0.0.js',
+  '/assets/app-1.0.0.css',
   '/icons/icon.svg',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
@@ -18,11 +20,11 @@ const APP_SHELL = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(SHELL).then(async (cache) => {
-    await cache.addAll(APP_SHELL);
-    const response = await fetch('/');
-    const html = await response.text();
-    const assetPaths = [...html.matchAll(/(?:src|href)="(\/assets\/[^"?]+)"/g)].map((match) => match[1]);
-    await cache.addAll(assetPaths);
+    await Promise.all(APP_SHELL.map(async (path) => {
+      const response = await fetch(new Request(path, { cache: 'reload' }));
+      if (!response.ok) throw new Error(`Could not precache ${path}`);
+      await cache.put(path, response);
+    }));
   }));
 });
 
@@ -42,14 +44,25 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
   if (event.request.mode === 'navigate') {
-    event.respondWith(fetch(event.request).then((response) => {
-      const copy = response.clone();
-      caches.open(RUNTIME).then((cache) => cache.put(event.request, copy));
-      return response;
-    }).catch(async () => (await caches.match(event.request)) || (await caches.match('/')) || caches.match('/offline.html')));
+    event.respondWith((async () => {
+      const cached = (await caches.match(event.request, { ignoreVary: true })) || (await caches.match('/', { ignoreVary: true }));
+      if (cached) {
+        if (self.navigator.onLine) fetch(event.request).then((response) => {
+          if (response.ok) caches.open(RUNTIME).then((cache) => cache.put(event.request, response));
+        }).catch(() => undefined);
+        return cached;
+      }
+      try {
+        const response = await fetch(event.request);
+        if (response.ok) await (await caches.open(RUNTIME)).put(event.request, response.clone());
+        return response;
+      } catch {
+        return caches.match('/offline.html', { ignoreVary: true });
+      }
+    })());
     return;
   }
-  event.respondWith(caches.match(event.request).then((cached) => cached || fetch(event.request).then((response) => {
+  event.respondWith(caches.match(event.request, { ignoreVary: true }).then((cached) => cached || fetch(event.request).then((response) => {
     if (response.ok) caches.open(RUNTIME).then((cache) => cache.put(event.request, response.clone()));
     return response;
   })));

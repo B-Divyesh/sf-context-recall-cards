@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://context-recall-cards.sociobot.in/sitemap.xml
