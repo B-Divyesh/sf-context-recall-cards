@@ -1,12 +1,20 @@
 import type { ExportBundle, PortableCard, RecallCard } from './types';
 
-const DB_NAME = 'context-recall-cards';
+const REAL_DB_NAME = 'context-recall-cards';
+const DEMO_DB_NAME = 'demo:context-recall-cards';
 const STORE = 'cards';
 const DB_VERSION = 1;
+let dbName = REAL_DB_NAME;
+
+export function useDemoStorage(enabled: boolean): void {
+  dbName = enabled ? DEMO_DB_NAME : REAL_DB_NAME;
+}
+
+export const storageNames = { real: REAL_DB_NAME, demo: DEMO_DB_NAME } as const;
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    const request = indexedDB.open(dbName, DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE)) {
@@ -54,6 +62,29 @@ export async function deleteCard(id: string): Promise<void> {
     const request = store.delete(id);
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
+  });
+}
+
+export async function replaceCards(nextCards: RecallCard[]): Promise<void> {
+  if (!nextCards.every(isRecallCard)) throw new Error('Demo data is invalid.');
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    const store = tx.objectStore(STORE);
+    store.clear();
+    nextCards.forEach((card) => store.put(card));
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error ?? new Error('Local storage operation failed.')); };
+    tx.onabort = () => { db.close(); reject(tx.error ?? new Error('Local storage operation failed.')); };
+  });
+}
+
+export function deleteDemoStorage(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(DEMO_DB_NAME);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error ?? new Error('Could not reset demo storage.'));
+    request.onblocked = () => reject(new Error('Close another demo tab, then reset again.'));
   });
 }
 

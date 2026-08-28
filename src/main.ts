@@ -1,6 +1,6 @@
 import './style.css';
-import { checkoutUrl, captureLicenseFromUrl, clearLicense, getLicense, isUnlocked, saveLicense, verifyLicense } from './billing';
-import { deleteCard, exportCards, getCards, importCards, parseImport, saveCard } from './db';
+import { captureLicenseFromUrl, clearLicense, getLicense, isUnlocked, saveLicense, useDemoBilling, verifyLicense } from './billing';
+import { deleteCard, deleteDemoStorage, exportCards, getCards, importCards, parseImport, replaceCards, saveCard, useDemoStorage } from './db';
 import { clozeSentence, formatDue, isAnswerCorrect, scheduleReview } from './scheduler';
 import type { PromptMode, RecallCard, ReviewGrade } from './types';
 
@@ -9,6 +9,13 @@ type View = 'today' | 'add' | 'library' | 'ownership';
 const FREE_CARD_LIMIT = 25;
 const FREE_RECORDING_LIMIT = 5;
 const app = document.querySelector<HTMLDivElement>('#app')!;
+const normalizedPath = location.pathname.replace(/\/+$/, '') || '/';
+const isDemoMode = normalizedPath === '/demo' || new URLSearchParams(location.search).get('demo') === '1';
+const isKnownAppPath = normalizedPath === '/' || normalizedPath === '/demo';
+
+if (isDemoMode && normalizedPath !== '/demo') history.replaceState({}, '', `/demo${location.hash}`);
+useDemoStorage(isDemoMode);
+useDemoBilling(isDemoMode);
 
 let cards: RecallCard[] = [];
 let view: View = 'today';
@@ -38,6 +45,29 @@ interface AddDraft {
 }
 
 let addDraft: AddDraft | undefined;
+
+function sampleCards(now = Date.now()): RecallCard[] {
+  return [
+    {
+      id: 'demo-ultimo', word: 'último', language: 'Spanish',
+      sentence: 'Perdí el último autobús a casa.', meaning: 'last', source: 'At the bus stop',
+      createdAt: now - 604_800_000, updatedAt: now - 86_400_000, dueAt: now - 60_000,
+      intervalDays: 1, promptMode: 'cloze', reviews: [],
+    },
+    {
+      id: 'demo-encore', word: 'encore', language: 'French',
+      sentence: 'Encore un café, s’il vous plaît.', meaning: 'another / again', source: 'Corner café',
+      createdAt: now - 432_000_000, updatedAt: now - 43_200_000, dueAt: now - 30_000,
+      intervalDays: 1, promptMode: 'speak', reviews: [],
+    },
+    {
+      id: 'demo-yukkuri', word: 'ゆっくり', language: 'Japanese',
+      sentence: 'もう少しゆっくり話してください。', meaning: 'slowly', source: 'Conversation class',
+      createdAt: now - 259_200_000, updatedAt: now - 21_600_000, dueAt: now - 10_000,
+      intervalDays: 1, promptMode: 'cloze', reviews: [],
+    },
+  ];
+}
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -120,9 +150,10 @@ function shell(content: string): void {
   releaseObjectUrls();
   const dueCount = cards.filter((card) => card.dueAt <= Date.now()).length;
   app.innerHTML = `
+    ${isDemoMode ? `<aside class="demo-banner" aria-label="Demo mode"><strong>Demo — sample data, nothing is saved</strong><span>Changes stay separate from your real field book.</span><div><button class="text-button" data-reset-demo>Reset demo</button><a href="/" class="text-button" data-start-real>Start for real</a></div></aside>` : ''}
     <div class="app-shell">
       <header class="topbar">
-        <a class="brand" href="#today" aria-label="Context Recall Cards home">${icon('flame')}<h1><span>Context</span> Recall</h1></a>
+        <a class="brand" href="#today" aria-label="Context Recall Cards home">${icon('flame')}<span class="wordmark"><b>Context</b> Recall</span></a>
         <div class="status-cluster">
           <span class="connection-status" data-online><span></span>${navigator.onLine ? 'On device' : 'Offline · still ready'}</span>
           <button class="button quiet install-button" data-install hidden>Install app</button>
@@ -135,10 +166,10 @@ function shell(content: string): void {
         ${navLink('library', 'Library', 'library')}
         ${navLink('ownership', 'Ownership', 'own')}
       </nav>
-      <main id="main" tabindex="-1">${transientMessage ? `<div class="toast" role="status">${esc(transientMessage)}</div>` : ''}${content}</main>
+      <main id="main" tabindex="-1"><p class="visually-hidden" aria-live="polite" data-route-announcer></p>${transientMessage ? `<div class="toast" role="status">${esc(transientMessage)}</div>` : ''}${content}</main>
       <footer>
         <span>Private by default. Made for the words only you meet.</span>
-        <span><a href="/privacy/">Privacy</a> · <a href="/terms/">Terms</a> · Hero art generated for this product.</span>
+        <span><a href="/privacy/">Privacy</a> · <a href="/terms/">Terms</a> · Built by Param Factory · v1.1 · Hero art generated for this product.</span>
       </footer>
     </div>`;
   const installButton = document.querySelector<HTMLButtonElement>('[data-install]');
@@ -167,10 +198,11 @@ function renderToday(): void {
         </picture>
         <div class="hero-copy">
           <p class="eyebrow">Recall from real life</p>
-          <h2 id="welcome-title">Give a word somewhere to live.</h2>
-          <p>Write the sentence where you found it. Add your voice if you like. We’ll bring it back as a short listen, cloze, and speak prompt.</p>
-          <div class="button-row"><a class="button primary" href="#add">Add your first context</a><a class="button quiet" href="#ownership">How it stays private</a></div>
-          <ul class="hero-facts" aria-label="Product features"><li>Works offline</li><li>No account</li><li>Your recordings stay here</li></ul>
+          <h1 id="welcome-title">Practice words from your own sentences.</h1>
+          <p>For independent language learners who forget words in real sentences; each context returns as listen, cloze, and speak practice.</p>
+          <div class="button-row"><a class="button primary" href="/demo">Try it with sample data</a><a class="button quiet" href="#add">Add a real context</a></div>
+          <p class="action-note">The demo opens three ready-to-practice contexts.</p>
+          <ul class="hero-facts" aria-label="Product facts"><li>Works offline after your first visit</li><li>No account required</li><li>Recordings stay in this browser</li></ul>
         </div>
       </section>`);
     return;
@@ -178,7 +210,7 @@ function renderToday(): void {
   const next = cards.find((card) => card.dueAt > Date.now());
   shell(`
     <section class="page-heading">
-      <div><p class="eyebrow">Today’s return</p><h2>${due.length ? `${due.length} context${due.length === 1 ? '' : 's'} ready` : 'The room is quiet'}</h2></div>
+      <div><p class="eyebrow">Today’s return</p><h1>${due.length ? `${due.length} context${due.length === 1 ? '' : 's'} ready` : 'The room is quiet'}</h1></div>
       <p>${due.length ? 'One prompt at a time. Say it before you reveal it.' : next ? `Next context ${formatDue(next.dueAt).toLowerCase()}.` : 'Add another word whenever you meet one.'}</p>
     </section>
     ${due.length ? `
@@ -224,7 +256,7 @@ function renderPractice(card: RecallCard, position: number, total: number): void
       <div class="mode-track active-${card.promptMode}" aria-label="Current prompt: ${modeLabel(card.promptMode)}"><span>Listen</span><span>Cloze</span><span>Speak</span></div>
       <article class="practice-paper">
         <p class="eyebrow">${modeLabel(card.promptMode)} recall</p>
-        <h2 id="practice-title" class="visually-hidden">Recall ${esc(card.word)}</h2>
+        <h1 id="practice-title" class="visually-hidden">Recall ${esc(card.word)}</h1>
         ${prompt}
         <div class="context-reveal ${revealed ? 'is-revealed' : ''}">
           ${revealed ? `<p class="revealed-word">${esc(card.word)}</p><blockquote${languageAttribute(card.language)}>${esc(card.sentence)}</blockquote>${card.meaning ? `<p>${esc(card.meaning)}</p>` : ''}<div class="context-meta">${source}<span>${esc(card.language || 'Language not set')}</span></div>` : `<button class="button quiet-on-paper" data-reveal>Reveal original context</button>`}
@@ -256,8 +288,8 @@ function renderAdd(): void {
   const recordings = cards.filter((card) => card.audio).length;
   const atRecordingLimit = !editing?.audio && !isUnlocked() && recordings >= FREE_RECORDING_LIMIT;
   shell(`
-    <section class="page-heading compact"><div><p class="eyebrow">Field note ${String(cards.length + (editing ? 0 : 1)).padStart(2, '0')}</p><h2>${editing ? 'Edit this context' : 'Capture a living word'}</h2></div><p>Use a sentence you actually met or wanted to say.</p></section>
-    ${!storageAvailable ? `<section class="limit-note"><h3>Local storage is unavailable.</h3><p>Check private-browsing or site-storage settings, then reload before adding a context. This prevents a note from appearing saved when it is not.</p></section>` : atCardLimit ? `<section class="limit-note"><h3>Your free field book is full.</h3><p>You can keep practicing and exporting all ${FREE_CARD_LIMIT} contexts, or unlock unlimited contexts with one purchase.</p><a class="button primary" href="#ownership">See the one-time unlock</a></section>` : `
+    <section class="page-heading compact"><div><p class="eyebrow">Field note ${String(cards.length + (editing ? 0 : 1)).padStart(2, '0')}</p><h1>${editing ? 'Edit this context' : 'Capture a living word'}</h1></div><p>Use a sentence you actually met or wanted to say.</p></section>
+    ${!storageAvailable ? `<section class="limit-note"><h3>Local storage is unavailable.</h3><p>Check private-browsing or site-storage settings, then reload before adding a context. This prevents a note from appearing saved when it is not.</p></section>` : atCardLimit ? `<section class="limit-note"><h3>Your free field book is full.</h3><p>You can keep practicing and exporting all ${FREE_CARD_LIMIT} contexts. New purchases are paused.</p><a class="button quiet" href="#ownership">See storage options</a></section>` : `
     <form class="context-form" data-card-form novalidate>
       <input type="hidden" name="id" value="${editing ? esc(editing.id) : ''}">
       <div class="form-grid">
@@ -277,7 +309,7 @@ function renderAdd(): void {
           <span class="record-status" data-record-status>${addRecording ? 'Recording ready' : 'Not recorded'}</span>
           ${addRecording ? `<button class="text-button" type="button" data-preview-recording>Play</button><button class="text-button danger-text" type="button" data-remove-recording>Remove</button>` : ''}
         </div>
-        ${atRecordingLimit ? `<p id="record-limit" class="limit-inline">The free field book includes ${FREE_RECORDING_LIMIT} recordings. <a href="#ownership">Unlock unlimited recording</a>.</p>` : ''}
+        ${atRecordingLimit ? `<p id="record-limit" class="limit-inline">The free field book includes ${FREE_RECORDING_LIMIT} recordings. New purchases are paused.</p>` : ''}
         <div class="inline-error" data-record-error role="alert"></div>
       </fieldset>
       <div class="inline-error" data-form-error role="alert"></div>
@@ -296,7 +328,7 @@ function renderLibrary(query = libraryQuery): void {
   const normalized = query.trim().toLocaleLowerCase();
   const filtered = cards.filter((card) => [card.word, card.sentence, card.meaning, card.language, card.source].some((value) => value.toLocaleLowerCase().includes(normalized)));
   shell(`
-    <section class="page-heading compact"><div><p class="eyebrow">Your field book</p><h2>${cards.length} personal context${cards.length === 1 ? '' : 's'}</h2></div><a class="button primary" href="#add">Add context</a></section>
+    <section class="page-heading compact"><div><p class="eyebrow">Your field book</p><h1>${cards.length} personal context${cards.length === 1 ? '' : 's'}</h1></div><a class="button primary" href="#add">Add context</a></section>
     <label class="search-box" for="library-search"><span class="visually-hidden">Search contexts</span><input type="search" id="library-search" placeholder="Search words, sentences, places…" value="${esc(query)}"><kbd>/</kbd></label>
     ${cards.length ? `<ul class="library-list">${filtered.map((card) => `
       <li class="library-card">
@@ -320,21 +352,46 @@ function renderOwnership(): void {
   const token = getLicense();
   shell(`
     <section class="ownership-hero">
-      <p class="eyebrow">Local by design</p><h2>Your words should not need an account.</h2><p>Contexts, review history, and voice recordings live in this browser’s private storage. Nothing is uploaded by the app.</p>
+      <p class="eyebrow">Local by design</p><h1>Your words should not need an account.</h1><p>Contexts, review history, and voice recordings live in this browser’s private storage. Nothing is uploaded by the app.</p>
       <div class="privacy-diagram" aria-label="Your sentence, voice and review schedule stay together on this device"><span>Your sentence</span><i>+</i><span>Your voice</span><i>+</i><span>Schedule</span><b>On this device</b></div>
     </section>
     <section class="ownership-grid">
-      <div class="ownership-panel"><p class="eyebrow">Data ownership</p><h3>Take the whole field book with you.</h3><p>Export a JSON backup with contexts, review history, and recordings. Import uses the newest edit when a card already exists.</p><div class="button-row"><button class="button secondary" data-export>${icon('download')} Export backup</button><label class="button quiet file-button">${icon('upload')} Import backup<input type="file" data-import accept="application/json,.json"></label></div><p class="fine-print">Exports can contain your voice. The app asks before creating one.</p></div>
+      <div class="ownership-panel"><p class="eyebrow">Data ownership</p><h3>Take the whole field book with you.</h3><p>Export a JSON backup with contexts, review history, and recordings. Import restores a valid Context Recall Cards backup.</p><div class="button-row"><button class="button secondary" data-export>${icon('download')} Export backup</button><label class="button quiet file-button">${icon('upload')} Import backup<input type="file" data-import accept="application/json,.json"></label></div><p class="fine-print">Exports can contain your voice. The app asks before creating one.</p></div>
       <div class="ownership-panel purchase-panel">
-        <p class="eyebrow">One-time unlock</p><h3>${unlocked ? 'Your field book is unlocked.' : '$12 once. Keep writing.'}</h3>
-        <p>${unlocked ? 'Unlimited contexts and recordings are available on this device.' : `The free field book includes ${FREE_CARD_LIMIT} contexts and ${FREE_RECORDING_LIMIT} voice recordings. Unlock unlimited contexts and recordings—no subscription.`}</p>
-        ${unlocked ? `<div class="license-active"><span>✓</span><div><strong>License active</strong><small>${esc(token.slice(0, 6))}…${esc(token.slice(-4))}</small></div></div><button class="text-button danger-text" data-remove-license>Remove from this device</button>` : `<a class="button primary full" href="${checkoutUrl}">Buy the one-time unlock</a><details><summary>Have a license? Restore purchase</summary><form data-license-form><label for="license-token">License token</label><input id="license-token" name="license" autocomplete="off" required><button class="button secondary" type="submit">Verify and unlock</button><p class="inline-error" data-license-error role="alert"></p></form></details>`}
-        <p class="fine-print">Checkout is hosted by Sociobot; Dodo is merchant of record. Refunds are handled there and revoke the license. <a href="/terms/">Terms</a></p>
+        <p class="eyebrow">Existing licenses</p><h3>${unlocked ? 'Your field book is unlocked.' : 'Purchases are paused.'}</h3>
+        <p>${unlocked ? 'Unlimited contexts and recordings are available on this device.' : `The free field book includes ${FREE_CARD_LIMIT} contexts and ${FREE_RECORDING_LIMIT} voice recordings. Checkout is not available in this release.`}</p>
+        ${unlocked ? `<div class="license-active"><span>✓</span><div><strong>License active</strong><small>${esc(token.slice(0, 6))}…${esc(token.slice(-4))}</small></div></div><button class="text-button danger-text" data-remove-license>Remove from this device</button>` : `<details open><summary>Have a license? Restore it</summary><form data-license-form><label for="license-token">License token</label><input id="license-token" name="license" autocomplete="off" required><button class="button secondary" type="submit">Verify license</button><p class="inline-error" data-license-error role="alert"></p></form></details>`}
+        <p class="fine-print">Your contexts remain available for practice and export. <a href="/terms/">Terms</a></p>
       </div>
     </section>`);
 }
 
+function renderNotFound(): void {
+  shell(`<section class="not-found"><p class="eyebrow">A note out of place</p><h1>This page is not in the field book.</h1><p>The address may be old or mistyped.</p><a class="button primary" href="/">Return to today</a></section>`);
+}
+
+function updatePageMetadata(): void {
+  const titles: Record<View, string> = {
+    today: isDemoMode ? 'Demo — Context Recall Cards' : 'Context Recall Cards — practice words in context',
+    add: 'Add a context — Context Recall Cards',
+    library: 'Library — Context Recall Cards',
+    ownership: 'Ownership — Context Recall Cards',
+  };
+  const title = isKnownAppPath ? titles[view] : 'Page not found — Context Recall Cards';
+  document.title = title;
+  document.querySelector<HTMLMetaElement>('meta[property="og:title"]')?.setAttribute('content', title);
+  document.querySelector<HTMLMetaElement>('meta[name="twitter:title"]')?.setAttribute('content', title);
+  const canonical = `https://context-recall-cards.sociobot.in${isDemoMode ? '/demo' : normalizedPath}`;
+  document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.setAttribute('href', canonical);
+  document.querySelector<HTMLMetaElement>('meta[property="og:url"]')?.setAttribute('content', canonical);
+}
+
 function render(): void {
+  if (!isKnownAppPath) {
+    renderNotFound();
+    updatePageMetadata();
+    return;
+  }
   const next = routeFromHash().view;
   if (view === 'add' && next === 'add') captureAddDraft();
   view = next;
@@ -343,6 +400,7 @@ function render(): void {
   else if (view === 'library') renderLibrary();
   else if (view === 'ownership') renderOwnership();
   else renderToday();
+  updatePageMetadata();
 }
 
 function announce(message: string): void {
@@ -479,6 +537,22 @@ document.addEventListener('click', async (event) => {
     document.querySelector<HTMLElement>('#main')?.focus();
     return;
   }
+  if (target.closest('[data-reset-demo]')) {
+    await replaceCards(sampleCards());
+    cards = await getCards();
+    activeReviewId = '';
+    transientMessage = 'Demo reset to its three sample contexts.';
+    render();
+    return;
+  }
+  if (target.closest('[data-start-real]')) {
+    event.preventDefault();
+    try { await deleteDemoStorage(); } catch { /* navigation still keeps real data isolated */ }
+    localStorage.removeItem('demo:sb_license:context-recall-cards');
+    localStorage.removeItem('demo:sb_license_verdict:context-recall-cards');
+    location.href = '/';
+    return;
+  }
   const start = target.closest<HTMLElement>('[data-start-review]');
   if (start) { activeReviewId = start.dataset.startReview ?? ''; reviewRevealed = false; clozeResult = ''; renderToday(); return; }
   if (target.closest('[data-exit-review]')) { activeReviewId = ''; reviewRevealed = false; renderToday(); return; }
@@ -580,6 +654,11 @@ window.addEventListener('hashchange', () => {
   activeReviewId = '';
   reviewRevealed = false;
   render();
+  const heading = document.querySelector<HTMLElement>('main h1');
+  heading?.setAttribute('tabindex', '-1');
+  heading?.focus();
+  const announcer = document.querySelector<HTMLElement>('[data-route-announcer]');
+  if (announcer && heading) announcer.textContent = heading.textContent ?? '';
 });
 window.addEventListener('pagehide', () => stopActiveRecording(true));
 window.addEventListener('online', render);
@@ -617,7 +696,13 @@ async function registerServiceWorker(): Promise<void> {
 
 async function init(): Promise<void> {
   captureLicenseFromUrl();
-  try { cards = await getCards(); }
+  try {
+    cards = await getCards();
+    if (isDemoMode && !cards.length) {
+      await replaceCards(sampleCards());
+      cards = await getCards();
+    }
+  }
   catch { storageAvailable = false; transientMessage = 'Local storage is unavailable. Check private browsing settings before adding a context.'; }
   render();
   if (import.meta.env.PROD) void registerServiceWorker().catch(() => undefined);

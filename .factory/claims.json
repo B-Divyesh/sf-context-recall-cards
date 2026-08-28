@@ -1,0 +1,72 @@
+[
+  {
+    "id": "offline-reload",
+    "claim": "Works offline after the first visit",
+    "where": "landing facts, README",
+    "test": "npm run test:e2e -- --project=chromium --grep @claim:offline-reload",
+    "sandbox": "fresh /demo visit; service worker controls; browser goes offline; reload retains three samples"
+  },
+  {
+    "id": "installable-pwa",
+    "claim": "Installs as a standalone PWA",
+    "where": "README, web app manifest",
+    "test": "npm run test:e2e -- --project=chromium --grep @claim:installable-pwa",
+    "sandbox": "fresh /demo; assert the controlling service worker and standalone manifest with 192, 512, and maskable icons"
+  },
+  {
+    "id": "demo-isolation",
+    "claim": "Demo changes stay separate from the real field book and are discarded on exit",
+    "where": "landing action, demo banner, README",
+    "test": "npm run test:e2e -- --project=chromium --grep @claim:demo-isolation",
+    "sandbox": "seed one real card; mutate and reset demo; exit; assert only the real card remains and the demo database is deleted"
+  },
+  {
+    "id": "local-private",
+    "claim": "No account is required and recordings stay in this browser unless exported",
+    "where": "landing facts, Add context, Ownership, README",
+    "test": "npm run test:e2e -- --project=chromium --grep @claim:local-private",
+    "sandbox": "fresh /demo; record and save with a fake microphone; assert a Blob in demo IndexedDB, no auth fields, and only same-origin requests"
+  },
+  {
+    "id": "json-backup",
+    "claim": "Exports and imports the field book, including recordings, as JSON",
+    "where": "Ownership, README",
+    "test": "npm run test:e2e -- --project=chromium --grep @claim:json-backup",
+    "sandbox": "fresh /demo samples with one recording; download JSON and assert encoded audio; import a new context and assert its audio is restored as a Blob"
+  },
+  {
+    "id": "recording-control",
+    "claim": "Recording preserves the context draft, and leaving the recording screen stops the microphone",
+    "where": "Add context, Privacy",
+    "test": "npm run test:e2e -- --project=chromium --grep @claim:recording-control",
+    "sandbox": "fresh app with an instrumented fake microphone; fill all fields; record twice; assert fields survive and the live track ends on navigation"
+  },
+  {
+    "id": "recall-sequence",
+    "claim": "Turns a saved sentence into listen, cloze, and speak recall with a saved due date",
+    "where": "landing description, README",
+    "test": "npm run test:e2e -- --project=chromium --grep @claim:recall-sequence",
+    "sandbox": "fresh /demo sample; complete cloze and grade it; assert review history and future due date in demo IndexedDB"
+  },
+  {
+    "id": "free-limits",
+    "claim": "Without a license, the field book allows 25 contexts and 5 recordings",
+    "where": "Add context, Ownership, README",
+    "test": "npm run test:e2e -- --project=chromium --grep @claim:free-limits",
+    "sandbox": "demo namespace seeded to 24 contexts and 5 recordings; assert the recording block, add context 25, then assert the context block"
+  },
+  {
+    "id": "checkout-paused",
+    "claim": "Unavailable checkout is not advertised or linked",
+    "where": "Ownership, Terms, README",
+    "test": "npm run test:e2e -- --project=chromium --grep @claim:checkout-paused",
+    "sandbox": "fresh /demo Ownership screen; assert the paused notice and absence of any checkout link"
+  },
+  {
+    "id": "license-unlock",
+    "claim": "A valid existing Sociobot license enables unlimited contexts and recordings",
+    "where": "Ownership, README",
+    "test": "npm run test:e2e -- --project=chromium --grep @claim:license-unlock",
+    "sandbox": "fresh browser with a mocked successful Sociobot response; capture the returned license and assert the unlocked state"
+  }
+]

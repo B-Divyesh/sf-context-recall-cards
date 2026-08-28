@@ -1,13 +1,14 @@
 {
   "name": "context-recall-cards",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run tests/*.test.ts",
+    "test:claims": "playwright test --project=chromium --grep @claim:",
     "test:e2e": "playwright test"
   },
   "devDependencies": {

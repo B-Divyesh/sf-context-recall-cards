@@ -4,8 +4,12 @@ const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const APP_SHELL = [
   '/',
+  '/demo',
   '/index.html',
   '/offline.html',
+  '/404.html',
+  '/404.css',
+  '/legal.css',
   '/manifest.webmanifest',
   ...(self.__CRC_PRECACHE || []),
   '/icons/icon.svg',
@@ -14,6 +18,8 @@ const APP_SHELL = [
   '/icons/icon-maskable-512.png',
   '/assets/recall-room-640.webp',
   '/assets/recall-room-1280.webp',
+  '/assets/social-card.jpg',
+  '/icons/apple-touch-icon.png',
   '/privacy/',
   '/terms/'
 ];
