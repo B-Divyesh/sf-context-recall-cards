@@ -1,0 +1,55 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - link "Skip to practice" [ref=e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=e4]:
+    - banner [ref=e5]:
+      - link "Context Recall Cards home" [ref=e6] [cursor=pointer]:
+        - /url: "#today"
+        - img [ref=e7]
+        - generic [ref=e9]: Context Recall
+      - generic [ref=e11]: On device Local
+    - navigation "Primary" [ref=e13]:
+      - link "Today · 1" [ref=e14] [cursor=pointer]:
+        - /url: "#today"
+        - img [ref=e15]
+        - generic [ref=e17]: Today · 1
+      - link "Add context" [ref=e18] [cursor=pointer]:
+        - /url: "#add"
+        - img [ref=e19]
+        - generic [ref=e21]: Add context
+      - link "Library" [ref=e22] [cursor=pointer]:
+        - /url: "#library"
+        - img [ref=e23]
+        - generic [ref=e25]: Library
+      - link "Ownership" [ref=e26] [cursor=pointer]:
+        - /url: "#ownership"
+        - img [ref=e27]
+        - generic [ref=e29]: Ownership
+    - main [ref=e30]:
+      - paragraph [ref=e31]: 1 personal context
+      - generic [ref=e32]:
+        - generic [ref=e33]:
+          - paragraph [ref=e34]: Your field book
+          - heading "1 personal context" [active] [level=1] [ref=e35]
+        - link "Add context" [ref=e36] [cursor=pointer]:
+          - /url: "#add"
+      - generic [ref=e37]:
+        - generic [ref=e38]: Search contexts
+        - searchbox "Search contexts /" [ref=e39]
+        - generic [ref=e40]: /
+      - list [ref=e41]:
+        - listitem [ref=e42]:
+          - generic [ref=e44]: Cloze · Due now
+          - heading "último" [level=3] [ref=e45]
+          - paragraph [ref=e46]: Perdí el último autobús.
+          - generic [ref=e47]:
+            - generic [ref=e48]: Spanish
+            - generic [ref=e49]: ·0 reviews
+          - generic [ref=e50]:
+            - link "Edit" [ref=e51] [cursor=pointer]:
+              - /url: "#add?edit=3d8ecbb5-ba20-48bf-b746-918bb3201c6e"
+            - button "Delete" [ref=e52] [cursor=pointer]
+```

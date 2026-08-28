@@ -1,0 +1,69 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - link "Skip to practice" [ref=e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=e4]:
+    - banner [ref=e5]:
+      - link "Context Recall Cards home" [ref=e6] [cursor=pointer]:
+        - /url: "#today"
+        - img [ref=e7]
+        - generic [ref=e9]: Context Recall
+      - generic [ref=e10]:
+        - generic [ref=e11]: On device
+        - button "Install app" [ref=e13] [cursor=pointer]
+    - navigation "Primary" [ref=e14]:
+      - generic [ref=e15]:
+        - generic [ref=e16]: Your field notes
+        - strong [ref=e17]: 1 context
+      - link "Today · 1" [ref=e18] [cursor=pointer]:
+        - /url: "#today"
+        - img [ref=e19]
+        - generic [ref=e21]: Today · 1
+      - link "Add context" [ref=e22] [cursor=pointer]:
+        - /url: "#add"
+        - img [ref=e23]
+        - generic [ref=e25]: Add context
+      - link "Library" [ref=e26] [cursor=pointer]:
+        - /url: "#library"
+        - img [ref=e27]
+        - generic [ref=e29]: Library
+      - link "Ownership" [ref=e30] [cursor=pointer]:
+        - /url: "#ownership"
+        - img [ref=e31]
+        - generic [ref=e33]: Ownership
+    - main [ref=e34]:
+      - paragraph [ref=e35]: 1 personal context
+      - generic [ref=e36]:
+        - generic [ref=e37]:
+          - paragraph [ref=e38]: Your field book
+          - heading "1 personal context" [active] [level=1] [ref=e39]
+        - link "Add context" [ref=e40] [cursor=pointer]:
+          - /url: "#add"
+      - generic [ref=e41]:
+        - generic [ref=e42]: Search contexts
+        - searchbox "Search contexts /" [ref=e43]
+        - generic [ref=e44]: /
+      - list [ref=e45]:
+        - listitem [ref=e46]:
+          - generic [ref=e48]: Cloze · Due now
+          - heading "último" [level=3] [ref=e49]
+          - paragraph [ref=e50]: Perdí el último autobús.
+          - generic [ref=e51]:
+            - generic [ref=e52]: Spanish
+            - generic [ref=e53]: ·0 reviews
+          - generic [ref=e54]:
+            - link "Edit" [ref=e55] [cursor=pointer]:
+              - /url: "#add?edit=57b6200e-64e6-47c5-a41f-2643c21a3d06"
+            - button "Delete" [ref=e56] [cursor=pointer]
+    - contentinfo [ref=e57]:
+      - generic [ref=e58]: Private by default. Made for the words only you meet.
+      - generic [ref=e59]:
+        - link "Privacy" [ref=e60] [cursor=pointer]:
+          - /url: /privacy/
+        - text: ·
+        - link "Terms" [ref=e61] [cursor=pointer]:
+          - /url: /terms/
+        - text: · Built by Param Factory · v1.1 · Hero art generated for this product.
+```
