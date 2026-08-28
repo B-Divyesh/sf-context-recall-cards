@@ -1,6 +1,7 @@
 import type { PromptMode, RecallCard, ReviewGrade } from './types';
 
 export const DAY = 86_400_000;
+const TEN_MINUTES = 10 * 60_000;
 
 export function nextMode(mode: PromptMode, hasAudio: boolean): PromptMode {
   if (mode === 'listen') return 'cloze';
@@ -15,7 +16,7 @@ export function scheduleReview(
 ): RecallCard {
   const current = Math.max(card.intervalDays, 0.25);
   const intervalDays = grade === 'again'
-    ? 0.04
+    ? TEN_MINUTES / DAY
     : grade === 'hard'
       ? Math.max(1, current * 1.4)
       : Math.max(card.reviews.length ? 2 : 1, current * 2.3);

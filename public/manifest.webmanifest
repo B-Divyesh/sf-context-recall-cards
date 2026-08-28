@@ -3,7 +3,7 @@
   "name": "Context Recall Cards",
   "short_name": "Recall Cards",
   "description": "Practice personal vocabulary through listen, cloze, and speak prompts—offline and private.",
-  "start_url": "/?v=1#today",
+  "start_url": "/?v=2#today",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",

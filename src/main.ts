@@ -21,10 +21,23 @@ let recordingRemoved = false;
 let recorder: MediaRecorder | undefined;
 let recordingStartedAt = 0;
 let recordingTimer = 0;
+let recordingStream: MediaStream | undefined;
+let discardActiveRecording = false;
 let installPrompt: BeforeInstallPromptEvent | undefined;
 let transientMessage = '';
 let objectUrls: string[] = [];
 let storageAvailable = true;
+let libraryQuery = '';
+
+interface AddDraft {
+  word: string;
+  language: string;
+  sentence: string;
+  meaning: string;
+  source: string;
+}
+
+let addDraft: AddDraft | undefined;
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -60,6 +73,31 @@ function audioUrl(blob?: Blob): string {
   const url = URL.createObjectURL(blob);
   objectUrls.push(url);
   return url;
+}
+
+function captureAddDraft(): void {
+  const form = document.querySelector<HTMLFormElement>('[data-card-form]');
+  if (!form) return;
+  const data = new FormData(form);
+  addDraft = {
+    word: String(data.get('word') ?? ''),
+    language: String(data.get('language') ?? ''),
+    sentence: String(data.get('sentence') ?? ''),
+    meaning: String(data.get('meaning') ?? ''),
+    source: String(data.get('source') ?? ''),
+  };
+}
+
+function languageAttribute(language: string): string {
+  // A learner's “Spanish” label is useful data but not a BCP 47 language tag.
+  return /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(language.trim()) ? ` lang="${esc(language.trim())}"` : '';
+}
+
+function stopActiveRecording(discard = false): void {
+  if (discard) discardActiveRecording = true;
+  window.clearInterval(recordingTimer);
+  if (recorder?.state === 'recording') recorder.stop();
+  else recordingStream?.getTracks().forEach((track) => track.stop());
 }
 
 function playBlob(blob: Blob): void {
@@ -175,7 +213,7 @@ function renderPractice(card: RecallCard, position: number, total: number): void
       ? `<p class="prompt-instruction">Listen to your earlier voice. Which word belongs to this context?</p><button class="record-disc" data-play-card aria-label="Play your recording">${icon('play')}<span>Play recording</span></button>`
       : `<p class="prompt-instruction">Picture the moment. Which word did you save?</p>`;
   } else if (card.promptMode === 'cloze') {
-    prompt = `<p class="prompt-instruction">Fill the missing word.</p><blockquote lang="${esc(card.language || 'und')}">${esc(clozeSentence(card.sentence, card.word))}</blockquote><form class="cloze-form" data-cloze><label for="cloze-answer">Your answer</label><div><input id="cloze-answer" name="answer" autocomplete="off" autocapitalize="off"><button class="button secondary" type="submit">Check</button></div>${clozeResult ? `<p class="answer-result ${clozeResult}" role="status">${clozeResult === 'correct' ? 'That’s it.' : `Not yet. Try once more, or reveal the context.`}</p>` : ''}</form>`;
+    prompt = `<p class="prompt-instruction">Fill the missing word.</p><blockquote${languageAttribute(card.language)}>${esc(clozeSentence(card.sentence, card.word))}</blockquote><form class="cloze-form" data-cloze><label for="cloze-answer">Your answer</label><div><input id="cloze-answer" name="answer" autocomplete="off" autocapitalize="off"><button class="button secondary" type="submit">Check</button></div>${clozeResult ? `<p class="answer-result ${clozeResult}" role="status">${clozeResult === 'correct' ? 'That’s it.' : `Not yet. Try once more, or reveal the context.`}</p>` : ''}</form>`;
   } else {
     prompt = `<p class="prompt-instruction">Say the word, then the whole sentence, before you reveal it.</p><div class="speak-stage">${icon('mic')}<p>No score, no judgement—listen to yourself and decide.</p><button class="button secondary" data-attempt-record>Record an attempt</button><div data-attempt-result></div></div>`;
   }
@@ -189,7 +227,7 @@ function renderPractice(card: RecallCard, position: number, total: number): void
         <h2 id="practice-title" class="visually-hidden">Recall ${esc(card.word)}</h2>
         ${prompt}
         <div class="context-reveal ${revealed ? 'is-revealed' : ''}">
-          ${revealed ? `<p class="revealed-word">${esc(card.word)}</p><blockquote lang="${esc(card.language || 'und')}">${esc(card.sentence)}</blockquote>${card.meaning ? `<p>${esc(card.meaning)}</p>` : ''}<div class="context-meta">${source}<span>${esc(card.language || 'Language not set')}</span></div>` : `<button class="button quiet-on-paper" data-reveal>Reveal original context</button>`}
+          ${revealed ? `<p class="revealed-word">${esc(card.word)}</p><blockquote${languageAttribute(card.language)}>${esc(card.sentence)}</blockquote>${card.meaning ? `<p>${esc(card.meaning)}</p>` : ''}<div class="context-meta">${source}<span>${esc(card.language || 'Language not set')}</span></div>` : `<button class="button quiet-on-paper" data-reveal>Reveal original context</button>`}
         </div>
       </article>
       ${revealed ? `<fieldset class="grade-row"><legend>How did retrieval feel?</legend><button data-grade="again">Again <small>10 min</small></button><button data-grade="hard">Needed a hint <small>1+ day</small></button><button data-grade="recalled" class="grade-primary">Recalled it <small>Next stage</small></button></fieldset>` : ''}
@@ -209,6 +247,7 @@ function getEditCard(): RecallCard | undefined {
 
 function renderAdd(): void {
   const editing = getEditCard();
+  const draft = addDraft;
   if (editing?.audio && !addRecording && !recordingRemoved) {
     addRecording = editing.audio;
     addRecordingMime = editing.audioMime ?? editing.audio.type;
@@ -222,13 +261,13 @@ function renderAdd(): void {
     <form class="context-form" data-card-form novalidate>
       <input type="hidden" name="id" value="${editing ? esc(editing.id) : ''}">
       <div class="form-grid">
-        <div class="field word-field"><label for="word">Word or phrase <span>required</span></label><input id="word" name="word" required maxlength="80" value="${editing ? esc(editing.word) : ''}" autocomplete="off"><p class="field-hint">Exactly as it appears in the sentence.</p></div>
-        <div class="field language-field"><label for="language">Language <span>optional</span></label><input id="language" name="language" maxlength="60" value="${editing ? esc(editing.language) : ''}" placeholder="e.g. Spanish"></div>
+        <div class="field word-field"><label for="word">Word or phrase <span>required</span></label><input id="word" name="word" required maxlength="80" value="${esc(draft?.word ?? editing?.word ?? '')}" autocomplete="off"><p class="field-hint">Exactly as it appears in the sentence.</p></div>
+        <div class="field language-field"><label for="language">Language <span>optional</span></label><input id="language" name="language" maxlength="60" value="${esc(draft?.language ?? editing?.language ?? '')}" placeholder="e.g. Spanish"></div>
       </div>
-      <div class="field"><label for="sentence">Your sentence <span>required</span></label><textarea id="sentence" name="sentence" required maxlength="500" rows="4">${editing ? esc(editing.sentence) : ''}</textarea><div class="field-footer"><p class="field-hint">The word or phrase must appear here.</p><span data-count>0 / 500</span></div></div>
+      <div class="field"><label for="sentence">Your sentence <span>required</span></label><textarea id="sentence" name="sentence" required maxlength="500" rows="4">${esc(draft?.sentence ?? editing?.sentence ?? '')}</textarea><div class="field-footer"><p class="field-hint">The word or phrase must appear here.</p><span data-count>0 / 500</span></div></div>
       <div class="form-grid">
-        <div class="field"><label for="meaning">Meaning in this moment <span>optional</span></label><input id="meaning" name="meaning" maxlength="160" value="${editing ? esc(editing.meaning) : ''}" placeholder="What you meant, not a dictionary entry"></div>
-        <div class="field"><label for="source">Where you met it <span>optional</span></label><input id="source" name="source" maxlength="100" value="${editing ? esc(editing.source) : ''}" placeholder="At the market, chapter 4…"></div>
+        <div class="field"><label for="meaning">Meaning in this moment <span>optional</span></label><input id="meaning" name="meaning" maxlength="160" value="${esc(draft?.meaning ?? editing?.meaning ?? '')}" placeholder="What you meant, not a dictionary entry"></div>
+        <div class="field"><label for="source">Where you met it <span>optional</span></label><input id="source" name="source" maxlength="100" value="${esc(draft?.source ?? editing?.source ?? '')}" placeholder="At the market, chapter 4…"></div>
       </div>
       <fieldset class="voice-field">
         <legend>Your voice <span>optional</span></legend>
@@ -252,7 +291,8 @@ function renderAdd(): void {
   updateCount();
 }
 
-function renderLibrary(query = ''): void {
+function renderLibrary(query = libraryQuery): void {
+  libraryQuery = query;
   const normalized = query.trim().toLocaleLowerCase();
   const filtered = cards.filter((card) => [card.word, card.sentence, card.meaning, card.language, card.source].some((value) => value.toLocaleLowerCase().includes(normalized)));
   shell(`
@@ -261,12 +301,18 @@ function renderLibrary(query = ''): void {
     ${cards.length ? `<ul class="library-list">${filtered.map((card) => `
       <li class="library-card">
         <div class="library-card-top"><span class="mode-pill">${modeLabel(card.promptMode)} · ${formatDue(card.dueAt)}</span>${card.audio ? `<span class="audio-pill">${icon('mic')} Voice</span>` : ''}</div>
-        <h3>${esc(card.word)}</h3><p class="library-sentence" lang="${esc(card.language || 'und')}">${esc(card.sentence)}</p>
+        <h3>${esc(card.word)}</h3><p class="library-sentence"${languageAttribute(card.language)}>${esc(card.sentence)}</p>
         <div class="library-meta"><span>${esc(card.language || 'No language label')}</span>${card.source ? `<span>${esc(card.source)}</span>` : ''}<span>${card.reviews.length} review${card.reviews.length === 1 ? '' : 's'}</span></div>
         <div class="library-actions"><a class="text-button" href="#add?edit=${encodeURIComponent(card.id)}">Edit</a><button class="text-button danger-text" data-delete="${esc(card.id)}">Delete</button></div>
       </li>`).join('')}</ul>${filtered.length === 0 ? `<div class="empty-search"><h3>No contexts match “${esc(query)}”.</h3><p>Try a word, language, or place.</p></div>` : ''}` : `<section class="rest-state"><h3>Your field book is empty.</h3><p>Add a sentence from something you read, heard, or wanted to say.</p><a class="button primary" href="#add">Add your first context</a></section>`}`);
   const search = document.querySelector<HTMLInputElement>('#library-search');
-  search?.addEventListener('input', () => renderLibrary(search.value));
+  search?.addEventListener('input', () => {
+    const { value, selectionStart, selectionEnd } = search;
+    renderLibrary(value);
+    const replacement = document.querySelector<HTMLInputElement>('#library-search');
+    replacement?.focus();
+    if (selectionStart !== null && selectionEnd !== null) replacement?.setSelectionRange(selectionStart, selectionEnd);
+  });
 }
 
 function renderOwnership(): void {
@@ -289,7 +335,9 @@ function renderOwnership(): void {
 }
 
 function render(): void {
-  view = routeFromHash().view;
+  const next = routeFromHash().view;
+  if (view === 'add' && next === 'add') captureAddDraft();
+  view = next;
   transientMessage = transientMessage || '';
   if (view === 'add') renderAdd();
   else if (view === 'library') renderLibrary();
@@ -316,14 +364,20 @@ async function startRecording(button: HTMLButtonElement, destination: 'card' | '
   }
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recordingStream = stream;
+    discardActiveRecording = false;
     const chunks: Blob[] = [];
     recorder = new MediaRecorder(stream);
     recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
     recorder.onstop = () => {
       stream.getTracks().forEach((track) => track.stop());
       window.clearInterval(recordingTimer);
-      const blob = new Blob(chunks, { type: recorder?.mimeType || 'audio/webm' });
+      recordingStream = undefined;
+      recorder = undefined;
+      if (discardActiveRecording) { discardActiveRecording = false; return; }
+      const blob = new Blob(chunks, { type: 'audio/webm' });
       if (destination === 'card') {
+        captureAddDraft();
         addRecording = blob;
         addRecordingMime = blob.type;
         recordingRemoved = false;
@@ -396,6 +450,7 @@ async function handleCardSubmit(form: HTMLFormElement): Promise<void> {
   }
   cards = await getCards();
   addRecording = undefined;
+  addDraft = undefined;
   recordingRemoved = false;
   location.hash = 'today';
   announce(existing ? 'Changes saved on this device.' : 'Context saved. It is ready for its first recall.');
@@ -419,6 +474,11 @@ async function grade(card: RecallCard, gradeValue: ReviewGrade): Promise<void> {
 
 document.addEventListener('click', async (event) => {
   const target = event.target as HTMLElement;
+  if (target.closest('.skip-link')) {
+    event.preventDefault();
+    document.querySelector<HTMLElement>('#main')?.focus();
+    return;
+  }
   const start = target.closest<HTMLElement>('[data-start-review]');
   if (start) { activeReviewId = start.dataset.startReview ?? ''; reviewRevealed = false; clozeResult = ''; renderToday(); return; }
   if (target.closest('[data-exit-review]')) { activeReviewId = ''; reviewRevealed = false; renderToday(); return; }
@@ -431,7 +491,7 @@ document.addEventListener('click', async (event) => {
   }
   const recordButton = target.closest<HTMLButtonElement>('[data-record], [data-attempt-record]');
   if (recordButton) {
-    if (recorder?.state === 'recording') recorder.stop();
+    if (recorder?.state === 'recording') stopActiveRecording();
     else await startRecording(recordButton, recordButton.hasAttribute('data-record') ? 'card' : 'attempt');
     return;
   }
@@ -489,7 +549,10 @@ document.addEventListener('change', async (event) => {
   const file = input?.files?.[0];
   if (!file) return;
   try {
-    const imported = parseImport(JSON.parse(await file.text()) as unknown);
+    let parsed: unknown;
+    try { parsed = JSON.parse(await file.text()) as unknown; }
+    catch { throw new Error('That file is not valid JSON. Choose a Context Recall Cards backup and try again.'); }
+    const imported = parseImport(parsed);
     const count = await importCards(imported);
     cards = await getCards();
     announce(count ? `Imported ${count} newer context${count === 1 ? '' : 's'}.` : 'Everything in that backup is already current.');
@@ -501,6 +564,13 @@ document.addEventListener('change', async (event) => {
 
 window.addEventListener('hashchange', () => {
   const nextRoute = routeFromHash();
+  if (nextRoute.view !== 'add') {
+    stopActiveRecording(true);
+    addDraft = undefined;
+    addRecording = undefined;
+    addRecordingMime = '';
+    recordingRemoved = false;
+  }
   if (nextRoute.view === 'add' && view !== 'add') {
     const editing = cards.find((card) => card.id === nextRoute.editId);
     addRecording = editing?.audio;
@@ -511,11 +581,15 @@ window.addEventListener('hashchange', () => {
   reviewRevealed = false;
   render();
 });
+window.addEventListener('pagehide', () => stopActiveRecording(true));
 window.addEventListener('online', render);
 window.addEventListener('offline', render);
 window.addEventListener('beforeinstallprompt', (event) => { event.preventDefault(); installPrompt = event as BeforeInstallPromptEvent; render(); });
 document.addEventListener('keydown', (event) => {
-  if (event.key === '/' && view === 'library' && document.activeElement?.tagName !== 'INPUT') { event.preventDefault(); document.querySelector<HTMLInputElement>('#library-search')?.focus(); }
+  if ((event.key === '/' || event.key === '?' || event.code === 'Slash') && view === 'library' && document.activeElement?.tagName !== 'INPUT') {
+    event.preventDefault();
+    document.querySelector<HTMLInputElement>('#library-search')?.focus();
+  }
 });
 
 async function registerServiceWorker(): Promise<void> {

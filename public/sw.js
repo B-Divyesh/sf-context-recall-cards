@@ -1,4 +1,5 @@
-const VERSION = 'crc-v1';
+try { importScripts('/precache-manifest.js'); } catch { self.__CRC_PRECACHE = []; }
+const VERSION = `crc-v2-${(self.__CRC_PRECACHE || []).join('|')}`;
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const APP_SHELL = [
@@ -6,8 +7,7 @@ const APP_SHELL = [
   '/index.html',
   '/offline.html',
   '/manifest.webmanifest',
-  '/assets/app-1.0.0.js',
-  '/assets/app-1.0.0.css',
+  ...(self.__CRC_PRECACHE || []),
   '/icons/icon.svg',
   '/icons/icon-192.png',
   '/icons/icon-512.png',

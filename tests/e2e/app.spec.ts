@@ -18,7 +18,10 @@ test('creates, practices, persists, and reloads offline', async ({ page, context
   await page.waitForFunction(() => navigator.serviceWorker?.controller !== null);
   const cachedShellBytes = await page.evaluate(async () => {
     await navigator.serviceWorker.ready;
-    const response = await caches.match('/assets/app-1.0.0.js');
+    const shell = (await caches.keys()).find((name) => name.includes('-shell'));
+    const cache = shell ? await caches.open(shell) : undefined;
+    const request = (await cache?.keys())?.find((item) => item.url.endsWith('.js'));
+    const response = request ? await cache?.match(request) : undefined;
     return response ? (await response.clone().arrayBuffer()).byteLength : 0;
   });
   expect(cachedShellBytes).toBeGreaterThan(20_000);
@@ -26,8 +29,8 @@ test('creates, practices, persists, and reloads offline', async ({ page, context
   await page.reload();
   const offlineState = await page.evaluate(async () => ({
     controlled: Boolean(navigator.serviceWorker?.controller),
-    shell: (await caches.match('/assets/app-1.0.0.js'))?.status ?? 0,
-    fetched: await fetch('/assets/app-1.0.0.js').then((response) => response.status).catch(() => 0),
+    shell: (await caches.keys()).some((name) => name.includes('-shell')) ? 200 : 0,
+    fetched: await fetch([...document.scripts].find((script) => script.src.includes('/assets/'))?.src ?? '/').then((response) => response.status).catch(() => 0),
   }));
   expect(offlineState).toEqual({ controlled: true, shell: 200, fetched: 200 });
   await expect(page.getByText('1 context ready')).toBeVisible();
@@ -100,4 +103,89 @@ test('captures and verifies a returned purchase license', async ({ page }) => {
   await expect(page).toHaveURL('http://127.0.0.1:4173/#ownership');
   await expect(page.getByRole('heading', { name: 'Your field book is unlocked.' })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('sb_license:context-recall-cards'))).toBe('license-for-test');
+});
+
+test('stopping a card recording preserves its draft and route changes stop the microphone', async ({ page }) => {
+  await page.addInitScript(() => {
+    let track = { readyState: 'live', stop() { this.readyState = 'ended'; } };
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: async () => {
+          track = { readyState: 'live', stop() { this.readyState = 'ended'; } };
+          (window as typeof window & { recordingTrack: typeof track }).recordingTrack = track;
+          return { getTracks: () => [track] };
+        },
+      },
+    });
+    class FakeRecorder {
+      state = 'inactive';
+      mimeType = 'audio/webm';
+      ondataavailable: ((event: { data: Blob }) => void) | null = null;
+      onstop: (() => void) | null = null;
+      constructor(_stream: unknown) {}
+      start() { this.state = 'recording'; }
+      stop() {
+        if (this.state !== 'recording') return;
+        this.state = 'inactive';
+        this.ondataavailable?.({ data: new Blob(['voice'], { type: this.mimeType }) });
+        this.onstop?.();
+      }
+    }
+    Object.defineProperty(window, 'MediaRecorder', { configurable: true, value: FakeRecorder });
+    (window as typeof window & { recordingTrack: typeof track }).recordingTrack = track;
+  });
+  await page.goto('/?fake-recorder=1#add');
+  await page.getByLabel('Word or phrase required').fill('último');
+  await page.getByLabel('Language optional').fill('Spanish');
+  await page.getByLabel('Your sentence required').fill('Perdí el último autobús a casa.');
+  await page.getByLabel('Meaning in this moment optional').fill('last');
+  await page.getByLabel('Where you met it optional').fill('the station');
+  await page.getByRole('button', { name: /Start recording/ }).click();
+  await expect(page.getByRole('button', { name: 'Stop recording' })).toBeVisible();
+  await page.getByRole('button', { name: 'Stop recording' }).click();
+  await expect(page.getByLabel('Word or phrase required')).toHaveValue('último');
+  await expect(page.getByLabel('Your sentence required')).toHaveValue('Perdí el último autobús a casa.');
+  await expect(page.getByLabel('Meaning in this moment optional')).toHaveValue('last');
+
+  await page.getByRole('button', { name: /Record again/ }).click();
+  expect(await page.evaluate(() => (window as typeof window & { recordingTrack: { readyState: string } }).recordingTrack.readyState)).toBe('live');
+  await page.getByRole('link', { name: /^Today/ }).click();
+  await expect(page).toHaveURL(/#today$/);
+  expect(await page.evaluate(() => (window as typeof window & { recordingTrack: { readyState: string } }).recordingTrack.readyState)).toBe('ended');
+});
+
+test('rejects invalid imports without corrupting the library', async ({ page }) => {
+  await page.goto('/#ownership');
+  await page.locator('[data-import]').setInputFiles({
+    name: 'broken.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({ format: 'context-recall-cards', version: 1, cards: [{ id: 'bad', word: 'hola', sentence: 'hola' }] })),
+  });
+  await expect(page.getByText('That backup is not a valid Context Recall Cards export. Nothing was imported.')).toBeVisible();
+  await page.getByRole('link', { name: 'Library', exact: true }).click();
+  await expect(page.getByText('Your field book is empty.')).toBeVisible();
+});
+
+test('keeps keyboard search focus and clears populated-state accessibility failures', async ({ page }) => {
+  await page.goto('/#add');
+  await page.getByLabel('Word or phrase required').fill('último');
+  await page.getByLabel('Language optional').fill('Spanish');
+  await page.getByLabel('Your sentence required').fill('Perdí el último autobús.');
+  await page.getByRole('button', { name: 'Save context' }).click();
+  await page.getByRole('link', { name: 'Library', exact: true }).click();
+  await page.keyboard.press('/');
+  await page.keyboard.type('missing-query');
+  await expect(page.locator('#library-search')).toHaveValue('missing-query');
+  await expect(page.locator('#library-search')).toBeFocused();
+  const results = await new AxeBuilder({ page: page as never }).analyze();
+  expect(results.violations.filter((violation) => ['serious', 'critical'].includes(violation.impact ?? ''))).toEqual([]);
+});
+
+test('keeps keyboard focus visible for skip and import controls', async ({ page }) => {
+  await page.locator('.skip-link').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#main')).toBeFocused();
+  await page.goto('/#ownership');
+  await page.locator('[data-import]').focus();
+  expect(await page.locator('.file-button').evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe('none');
 });

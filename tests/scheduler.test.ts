@@ -26,7 +26,7 @@ describe('recall scheduler', () => {
   it('keeps an unsuccessful prompt nearby in the same mode', () => {
     const reviewed = scheduleReview(card, 'again', 10_000);
     expect(reviewed.promptMode).toBe('cloze');
-    expect(reviewed.dueAt).toBe(10_000 + .04 * DAY);
+    expect(reviewed.dueAt).toBe(10_000 + 10 * 60_000);
   });
 });
 

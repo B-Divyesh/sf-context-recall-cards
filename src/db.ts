@@ -36,7 +36,7 @@ async function transaction<T>(
 export async function getCards(): Promise<RecallCard[]> {
   return transaction('readonly', (store, resolve, reject) => {
     const request = store.getAll();
-    request.onsuccess = () => resolve((request.result as RecallCard[]).sort((a, b) => a.dueAt - b.dueAt));
+    request.onsuccess = () => resolve((request.result as unknown[]).filter(isRecallCard).sort((a, b) => a.dueAt - b.dueAt));
     request.onerror = () => reject(request.error);
   });
 }
@@ -86,26 +86,85 @@ export async function exportCards(cards: RecallCard[]): Promise<ExportBundle> {
 export function parseImport(value: unknown): RecallCard[] {
   const bundle = value as Partial<ExportBundle>;
   if (bundle.format !== 'context-recall-cards' || bundle.version !== 1 || !Array.isArray(bundle.cards)) {
-    throw new Error('Choose a Context Recall Cards JSON export (version 1).');
+    throw invalidImport();
   }
+  const ids = new Set<string>();
   return bundle.cards.map((raw) => {
-    if (!raw || typeof raw.id !== 'string' || typeof raw.word !== 'string' || typeof raw.sentence !== 'string') {
-      throw new Error('The export contains an invalid card.');
-    }
+    if (!isPortableCard(raw) || ids.has(raw.id)) throw invalidImport();
+    ids.add(raw.id);
     const { audioDataUrl, ...card } = raw;
-    return { ...card, audio: audioDataUrl ? dataUrlToBlob(audioDataUrl) : undefined } as RecallCard;
+    try {
+      return { ...card, audio: audioDataUrl ? dataUrlToBlob(audioDataUrl) : undefined };
+    } catch {
+      throw invalidImport();
+    }
   });
 }
 
 export async function importCards(incoming: RecallCard[]): Promise<number> {
-  const existing = new Map((await getCards()).map((card) => [card.id, card]));
-  let changed = 0;
-  for (const card of incoming) {
-    const current = existing.get(card.id);
-    if (!current || card.updatedAt > current.updatedAt) {
-      await saveCard(card);
-      changed += 1;
-    }
-  }
-  return changed;
+  if (!incoming.every(isRecallCard) || new Set(incoming.map((card) => card.id)).size !== incoming.length) throw invalidImport();
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    const store = tx.objectStore(STORE);
+    let changed = 0;
+    const existingRequest = store.getAll();
+    existingRequest.onerror = () => reject(existingRequest.error ?? new Error('Local storage operation failed.'));
+    existingRequest.onsuccess = () => {
+      const existing = new Map((existingRequest.result as unknown[]).filter(isRecallCard).map((card) => [card.id, card]));
+      incoming.forEach((card) => {
+        const current = existing.get(card.id);
+        if (!current || card.updatedAt > current.updatedAt) {
+          store.put(card);
+          changed += 1;
+        }
+      });
+    };
+    tx.oncomplete = () => { db.close(); resolve(changed); };
+    tx.onerror = () => { db.close(); reject(tx.error ?? new Error('Local storage operation failed.')); };
+    tx.onabort = () => { db.close(); reject(tx.error ?? new Error('Local storage operation failed.')); };
+  });
+}
+
+function invalidImport(): Error {
+  return new Error('That backup is not a valid Context Recall Cards export. Nothing was imported.');
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isReview(value: unknown): boolean {
+  return isPlainObject(value)
+    && isFiniteNumber(value.at)
+    && isFiniteNumber(value.nextDueAt)
+    && ['listen', 'cloze', 'speak'].includes(String(value.mode))
+    && ['again', 'hard', 'recalled'].includes(String(value.grade));
+}
+
+export function isRecallCard(value: unknown): value is RecallCard {
+  return isPlainObject(value)
+    && typeof value.id === 'string' && value.id.length > 0
+    && typeof value.word === 'string' && value.word.length > 0 && value.word.length <= 80
+    && typeof value.sentence === 'string' && value.sentence.length > 0 && value.sentence.length <= 500
+    && value.sentence.toLocaleLowerCase().includes(value.word.toLocaleLowerCase())
+    && typeof value.meaning === 'string' && value.meaning.length <= 160
+    && typeof value.language === 'string' && value.language.length <= 60
+    && typeof value.source === 'string' && value.source.length <= 100
+    && isFiniteNumber(value.createdAt) && isFiniteNumber(value.updatedAt) && isFiniteNumber(value.dueAt)
+    && isFiniteNumber(value.intervalDays) && value.intervalDays >= 0
+    && ['listen', 'cloze', 'speak'].includes(String(value.promptMode))
+    && Array.isArray(value.reviews) && value.reviews.every(isReview)
+    && (value.audio === undefined || value.audio instanceof Blob)
+    && (value.audioMime === undefined || typeof value.audioMime === 'string');
+}
+
+function isPortableCard(value: unknown): value is PortableCard {
+  if (!isPlainObject(value)) return false;
+  const { audioDataUrl, ...card } = value;
+  return isRecallCard(card) && (audioDataUrl === undefined || typeof audioDataUrl === 'string');
 }
