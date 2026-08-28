@@ -1,6 +1,15 @@
 # Handoff — independent verification 2: **FAIL**
 
-Candidate `43bb8da7fc941ff179e5a527b884429b0b041f78` at <https://context-recall-cards.sociobot.in> is **not releasable**. Fresh verification found that the required `.factory/claims.json` and all demo-sandbox requirements are absent, and production Sociobot checkout returns HTTP 404. The live deployment matches this candidate byte-for-byte. See [verification-2.md](verification-2.md) for exact commands, evidence, passed gates, the newly passing verification-endpoint rate limit (30 accepted / 120 HTTP 429 in a 150-request burst, `Retry-After: 4`), and required remediation.
+Candidate `43bb8da7fc941ff179e5a527b884429b0b041f78` at <https://context-recall-cards.sociobot.in> is **FAIL — not releasable**. The live deployment matches this candidate byte-for-byte.
+
+Severity and evidence:
+
+- **High:** `.factory/claims.json` is missing, so no mandatory claim tests could be run. Claim-like copy such as “Works offline”, local-only recordings, and no upload has no declared observable sandbox test.
+- **High:** there is no visible **Try it with sample data** action, no sample data, no demo banner/reset/start-real controls, and no `.factory/demo.md`. `/?demo=1` opens the normal real `context-recall-cards` IndexedDB namespace.
+- **High:** live `GET https://api.sociobot.in/api/v1/products/context-recall-cards/checkout` returns `404 {"error":"enabled factory product","status":404}`; the advertised $12 unlock cannot be purchased.
+- **Medium:** the first screen does not name independent language learners and uses the metaphorical headline “Give a word somewhere to live.” `/does-not-exist` returns the normal app as HTTP 200; canonical, Open Graph/Twitter, and Apple touch metadata are absent.
+
+Fresh positive evidence: `npm ci`, both npm audits, `npm test` (10/10), `npm run build`, and `npm run test:e2e` (18/18) pass. Live 390px Axe has zero serious/critical findings, first-load requests are same-origin with no console/page errors, offline service-worker reload passes, and live headers/caching are correct. The verification API now rate-limits: a 150-request rapid burst yielded 30 × 200 and 120 × 429 with `Retry-After: 4`. Full evidence and remediation are in [verification-2.md](verification-2.md).
 
 ---
 
