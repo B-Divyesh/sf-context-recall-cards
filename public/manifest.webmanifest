@@ -1,0 +1,22 @@
+{
+  "id": "/?source=installed",
+  "name": "Context Recall Cards",
+  "short_name": "Recall Cards",
+  "description": "Practice personal vocabulary through listen, cloze, and speak prompts—offline and private.",
+  "start_url": "/?v=1#today",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#081315",
+  "theme_color": "#081315",
+  "categories": ["education", "productivity"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Practice now", "url": "/#today" },
+    { "name": "Add context", "url": "/#add" }
+  ]
+}
