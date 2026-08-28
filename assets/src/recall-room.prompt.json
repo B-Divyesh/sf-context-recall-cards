@@ -1,0 +1,8 @@
+{
+  "tool": "/opt/fleet/lib/gen-image.sh",
+  "deployment": "factory-image",
+  "date": "2026-08-28",
+  "size": "1536x1024",
+  "quality": "high",
+  "prompt": "Cinematic environmental concept art for a private language recall journal, an unoccupied glass conservatory-workroom at blue hour after rain, a small dark-wood writing desk holding an open completely blank field notebook and a compact unbranded voice recorder, three warm pools of practical tungsten light receding into the room as a subtle listen-remember-speak path, rain-streaked windows with a softly blurred old-city street beyond, moss and paper textures, deep petrol and ink-green shadows, parchment and ember highlights, 35mm lens, quiet intimate atmosphere, editorial realism, wide composition with clear dark negative space on the left, no people, no hands, no readable text, no letters, no symbols, no logos, no watermark, no app interface, no floating cards, no neon cyberpunk"
+}

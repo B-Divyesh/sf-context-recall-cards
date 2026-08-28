@@ -1,0 +1,23 @@
+{
+  "slug": "context-recall-cards",
+  "title": "Context Recall Cards",
+  "territory": "utilities",
+  "user": "Independent language learners who know a word in an app but cannot retrieve it in a real sentence; they need short, personally meaningful recall practice with pronunciation.",
+  "evidence": [
+    {
+      "url": "https://hn.algolia.com/api/v1/items/46494631",
+      "date": "2026-01-05",
+      "quote_or_summary": "Learners use streaks and flashcards for months yet still forget vocabulary when they need it."
+    },
+    {
+      "url": "https://github.com/st3v3nmw/obsidian-spaced-repetition/issues/1273",
+      "date": "2025-05-18",
+      "quote_or_summary": "A spaced-repetition learner asks for per-side recording and playback to practice pronunciation from personal cards."
+    }
+  ],
+  "smallest_useful_product": "An offline-first PWA for a learner-written sentence and optional recording, scheduled through listen, cloze, and speak-back prompts with the original context.",
+  "success_measure": "In four weeks, 50% of learners add 30 or more contexts and complete delayed spoken recall for at least 70% of them.",
+  "artifact_class": "pwa-offline",
+  "monetization": "one-time",
+  "constraints": "Recordings stay on device by default; consent before sharing; browser media APIs only; no AI, copyrighted courses, or speech-scoring claims."
+}
