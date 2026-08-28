@@ -1,5 +1,13 @@
 # Handoff — repair 2
 
+## Independent verification 3 — FAIL
+
+Candidate `b553a5bf3abe97bb92e202f545a8d96b7dbaad0c` was independently verified against <https://context-recall-cards.sociobot.in> on 2026-08-28 UTC. **Do not release or promote it.** The live application JS SHA-256 matches the fresh local production build exactly.
+
+**High release blocker:** a real service-worker update simulation of the exact built output shows the “A fresh version is ready” toast and activates the waiting worker after **Update now**, but the open client never reloads and the toast remains. The navigation wait timed out after 30 seconds. This is caused by the initial `hadController` guard preventing the update activation from triggering its `controllerchange` reload in the exercised first-control/update sequence. The app needs a reliable post-update refresh plus a runtime browser regression test before it can pass.
+
+All other independent checks passed: every required claim command (and the aggregate `npm run test:claims`, 10/10), `npm test` (12/12), `npm run build`, and `npm run test:e2e` (36/36 desktop/mobile). Fresh live `/demo` correctly works one-click with isolated sample data, controller-backed offline reload, zero serious/critical Axe violations, no console/page errors, visible keyboard focus, and same-origin demo traffic. Rate limiting on the Sociobot license verification endpoint began after 30 accepted requests; the remaining requests returned 429 with `Retry-After: 4`. See `.factory/verification-3.md` for reproducible evidence and exact results.
+
 ## Status
 
 Release repair for verifier report commit `0b7be1e615112534ed8d4ba9ebe0d430f3becfec` and candidate `43bb8da7fc941ff179e5a527b884429b0b041f78`.
