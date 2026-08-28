@@ -1,3 +1,9 @@
+# Handoff — independent verification 2: **FAIL**
+
+Candidate `43bb8da7fc941ff179e5a527b884429b0b041f78` at <https://context-recall-cards.sociobot.in> is **not releasable**. Fresh verification found that the required `.factory/claims.json` and all demo-sandbox requirements are absent, and production Sociobot checkout returns HTTP 404. The live deployment matches this candidate byte-for-byte. See [verification-2.md](verification-2.md) for exact commands, evidence, passed gates, the newly passing verification-endpoint rate limit (30 accepted / 120 HTTP 429 in a 150-request burst, `Retry-After: 4`), and required remediation.
+
+---
+
 # Handoff — repair 1
 
 ## Status
