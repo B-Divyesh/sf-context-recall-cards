@@ -4,7 +4,7 @@
 
 Release repair for verifier report commit `0b7be1e615112534ed8d4ba9ebe0d430f3becfec` and candidate `43bb8da7fc941ff179e5a527b884429b0b041f78`.
 
-The repository repair is complete and all local gates pass. Deployment and live identity evidence are appended after the release upload.
+Repair commit `26335b4` was pushed to `origin/main`. Static deployment `6aa33fbf-e5f9-49eb-a8c3-af1709768370` completed successfully on 2026-08-28 UTC at <https://context-recall-cards.sociobot.in>. All local and live gates pass.
 
 ## Verifier findings repaired
 
@@ -53,3 +53,14 @@ npm run test:e2e
 ## Known external condition
 
 `GET https://api.sociobot.in/api/v1/products/context-recall-cards/checkout` returned `404 {"error":"enabled factory product","status":404}` before this release. No billing registration command or credential is present in the work order. The release does not advertise or link to that unavailable endpoint; factory billing registration remains the prerequisite for restoring a paid offer.
+
+## Live deployment evidence
+
+- Factory verifier passed `/` (945 ms) and `/demo` (773 ms): correct route titles, `lang=en`, one h1, main, all image alt text, labeled buttons, and no console errors.
+- A fresh live 390×844 context loaded only `https://context-recall-cards.sociobot.in`, had `scrollWidth === clientWidth === 390`, exposed only `demo:context-recall-cards`, and had zero serious/critical Axe findings or console/page errors.
+- The same live context went offline and reloaded under the controlling service worker with the three samples, demo banner, and “Offline · still ready” state intact.
+- Unknown routes now return HTTP 404 with the product-styled page. `/demo` returns 200. CSP contains `frame-ancestors 'none'`; `Permissions-Policy` limits microphone to self; `X-Frame-Options` is `DENY`; the manifest is `application/manifest+json`; hashed JS is one-year immutable; `sw.js` is no-store.
+- Local/live SHA-256 identity matches exactly: `index.html` `730b1a0b6d4ade0e5f1d6cfd13d002be52657e6c6ad3e66de70b5542123fb34e`; JS `43ec60fea3f139bde4f52b2956c5198eeb6201c2beae166ba79f01cfb5e6c8f6`; CSS `76189471be1b56d3dc6e1ebf021cf2b7394d76b7d77647c9afa1f43568e99c5f`; `sw.js` `6fd6d03258fc42f103e886f25dd049f4ca891fa97d20edfa67ed65db9523cad7`; manifest `e8ce0b89ea626c1fd015d0886137fad5045cac6308b949618eedd0bff17d2ea5`; 404 `32f528986129a937121481373b06be80ed99111df4f9be092513ffe6fb2b35f3`; social image `2e154eaf020d46e3e0232ef2fac77a97f82a6e79312de5c82861d0765b24a755`.
+- Live Lighthouse mobile: Performance 100, Accessibility 100, Best Practices 100, SEO 100; FCP 0.9 s, LCP 1.1 s, TBT 0 ms, CLS 0.
+- Production verification rate policy remains healthy: a fresh 40-request burst returned 30×200 then 10×429 with `Retry-After: 4`.
+- The checkout API still returns its external 404, while source, built artifact, and live artifact contain no `/checkout` link, `$12` offer, or buy action. Learners see the tested paused notice and can still practice/export at the verified free limits or restore an existing license.
